@@ -1,74 +1,50 @@
 package main
 
 import (
-    "bufio"
-    "io/ioutil"
     "fmt"
-    "net/http"
-    "os"
+    "github.com/alecthomas/kong"
+    "github.com/vtacius/viuda/lib"
 )
 
-// TODO: Es necesario manejar errores
-func leerArchivo(archivo string) []string{
-    var paths []string;
-
-    fichero, _ := os.Open(archivo);
-
-    defer fichero.Close();
-
-    scanner := bufio.NewScanner(fichero);
-
-    for scanner.Scan() {
-        paths = append(paths, scanner.Text());
-    }
-
-    return paths;
+var Opciones struct {
+    Dominio string `help:"Dominio base" required:""`
+    Prefijo string `help:"Prefijo de las componentes variables del path" default:"${"`
+    Fichero string `help:"Fichero con el contenido deseado" type:"existingfile"`
+    Opciones []string `help:"Opciones para sustituir en los componentes variables del path" default:"12,13"`
+    Metodos []string `help:"Metodos a aplicar en cada URL" default:"GET,POST,PUT,PATCH,DELETE"`
+    Json bool `help:"Configura la petición como tipo JSON" default:"false"`
 }
 
-// TODO: Validar que la URL este bien hecha, sobre todo con //
-func crearUrl(base string, path string) (resultado string) {
-    resultado = fmt.Sprintf("%s%s", base, path)
-    return
-}
-
-// TODO: Validar los errores
-// TODO: Cambiar el user-agent
-// TODO: Cambiar el user-agent de forma random en base a cadenas predefinidas
-// TODO: Las cabeceras, tenés que cambiar las cabeceras para Accept y Content-Type
-// Mostrar las cabeceras, para ver que ha respondido realmente
-func peticion(metodo string, url string) []byte {
-    cliente := &http.Client{};
-    req, _ := http.NewRequest(metodo, url, nil);
-    res, _ := cliente.Do(req);
-
-    defer res.Body.Close();
-
-    body, _ := ioutil.ReadAll(res.Body);
-
-    return body;
-}
 
 func main() {
-    argv := os.Args[1:]
-    if len(argv) != 2 {
-        fmt.Printf("Hacen falta argumentos");
-        os.Exit(1);
+    _ = kong.Parse(&Opciones);
+    dominio := Opciones.Dominio;
+    prefijo := Opciones.Prefijo;
+    fichero := Opciones.Fichero;
+    paths := lib.LeerArchivo(fichero);
+    opciones := Opciones.Opciones;
+    metodos := Opciones.Metodos;
+    isJson := Opciones.Json;
+
+    cabeceras := map[string]string {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0",
     }
 
-    baseurl := argv[0];
-    archivo := argv[1];
-    metodos := []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
+    if isJson {
+        cabeceras["Content-Type"] = "application/json";
+        cabeceras["Accept"] = "application/json";
+    }
     
-    paths := leerArchivo(archivo);
-
+    urls := []string{};
+    
     for _, path := range(paths) {
-        for _, metodo := range(metodos) {
-            url := crearUrl(baseurl, path);
-            fmt.Printf("\n>> %-6s: %s", metodo, url);
-            resultado := peticion(metodo, url);
-            fmt.Printf("\n%s\n", resultado);
-        }
+        urls = append(urls, lib.CrearUrls(dominio, path, prefijo, opciones)...);
     }
-
-    fmt.Println("");
+    
+    for _, url := range(urls) {
+        for _, metodo := range(metodos){
+            fmt.Println(lib.Peticion(metodo, url, cabeceras));
+            fmt.Println("");
+        } 
+    }
 }
